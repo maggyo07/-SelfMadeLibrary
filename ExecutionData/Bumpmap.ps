@@ -1,0 +1,60 @@
+//グローバル
+Texture2D shaderTexture[2];
+SamplerState SampleType;
+
+cbuffer LightBuffer
+{
+	float4 diffuse_color;
+	float3 light_direction;
+};
+//タイプ
+struct PixelInputType
+{
+	float4 position	:SV_POSITION;
+	float2 tex		:TEXCOORD0;
+	float3 normal	:NORMAL;
+	float3 tangent	:TANGENT;
+	float3 binormal	:BINORMAL;
+};
+
+float4 BumpMapPixelShader(PixelInputType input) : SV_TARGET
+{
+	float4 texture_color;	//テクスチャのピクセルカラー
+	float4 bump_map;
+	float3 bump_normal;
+	float3 light_dir;
+	float  lightlntensity;
+	float4 color;
+
+	//テクスチャピクセルをサンプリング
+	texture_color = shaderTexture[0].Sample(SampleType,input.tex);
+
+	//バンプマップのピクセルをサンプリング
+	bump_map = shaderTexture[1].Sample(SampleType,input.tex);
+	
+	//通常の値の範囲を(0,+1)から(-1,+1)に拡張する
+	bump_map = (bump_map * 2.0f) - 1.0f;
+	
+	//バンプマップのデータから法線を計算
+	bump_normal = (bump_map.x * input.tangent) + (bump_map.y * input.binormal) + (bump_map.z * input.normal);
+
+	//結果として生じるバンプ法線を正規化
+	bump_normal = normalize(bump_normal);
+
+	//光の方向を逆にして計算
+	light_dir = -light_direction;
+
+	//バンプマップの法線値に基づいてこのピクセルの光量を計算
+	lightlntensity = saturate(dot(bump_normal,light_dir));
+
+		
+	//拡散色と光量の量に基づいて最終的な拡散色を決定
+	color = saturate(diffuse_color * lightlntensity);
+	//上記の計算によって狂ったA値を調整
+	color.a = 1.0f;
+
+	//最終的にバンプライトカラーとテクスチャカラーを組み合わせる
+	color = color * texture_color;
+
+	return color;
+}

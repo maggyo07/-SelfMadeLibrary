@@ -1,0 +1,69 @@
+//グローバル変数
+Texture2D shaderTexture;
+SamplerState sampleType;
+
+cbuffer LightBuffer
+{
+	float4 ambientColor;	//環境光の色
+	float4 diffuseColor;	//光の色
+	float3 lightDirection;	//光の方向
+	float  specularPower;	//鏡面反射光の強度
+	float4 specularColor;	//鏡面反射光の色
+};
+
+//タイプ
+struct PixelInputType
+{
+	float4 position			: SV_POSITION;
+	float2 tex				: TEXCOORD;
+	float3 normal			: NORMAL;
+	float3 viewDirection	: TEXCOORD1;
+};
+
+//ピクセルシェーダ
+float4 PS (PixelInputType input) : SV_TARGET
+{	
+	float4 texture_color;	//テクスチャのカラー
+	float3 light_dir;		//グローバル変数のlightDirectionの反転
+	float  light_intensity;	//ピクセル上の光の量
+	float4 color;			//最終的なカラー情報
+	float3 reflection;		//反射ベクトル(スペキュラー用)
+	float4 specular;		//鏡面反射光の量
+	
+	//このテクスチャ座標位置でサンプラを使用して、テクスチャからピクセルカラーをサンプリングする
+	texture_color = shaderTexture.Sample(sampleType,input.tex);
+
+	//デフォルトの出力色をすべてのピクセルの環境光の値に設定
+	color = ambientColor;
+
+	//鏡面反射光の色を初期化する
+	specular = float4 (0.0f,0.0f,0.0f,0.0f);
+
+	//計算のために光の方向を反転
+	light_dir = -lightDirection;
+
+	//このピクセル上の光の量を計算
+	light_intensity = saturate(dot(input.normal,light_dir));
+
+	if(light_intensity > 0.0f)
+	{
+		//拡散色と光強度の量に基づいて最終的な拡散色を決定
+		color += (diffuseColor * light_intensity);
+
+		//周囲を飽和させ、色を拡散させる
+		color = saturate(color);
+
+		//光の強さ、法線ベクトル、および光の方向に基づいて反射ベクトルを計算する
+		reflection = normalize(2*light_intensity * input.normal - light_dir);
+
+		//反射ベクトル、視線方向、および鏡面反射パワーに基づいて鏡面光の量を決定する
+		specular = pow (saturate(dot(reflection,input.viewDirection)),specularPower);
+	}
+	//テクスチャピクセルと最後拡散カラーを掛け合わせて、最終ピクセルカラー結果を取得する
+	color = color * texture_color;
+
+	//出力色の最後に鏡面反射成分を追加
+	color = saturate(color + specular);
+
+	return color;
+}

@@ -1,0 +1,30 @@
+//グローバル
+Texture2D shaderTexture[2];
+SamplerState SampleType;
+
+//タイプ
+struct PixelInputType
+{
+	float4 position	: SV_POSITION;
+	float2 tex		: TEXCOORD0;
+	float gamma_factor :GAMMA;
+};
+
+float4 MultiTexturePixelShader(PixelInputType input) : SV_TARGET
+{
+	float4 texture_color1;	//１番目のテクスチャのピクセルカラー
+	float4 texture_color2;	//２番目のテクスチャのピクセルカラー
+	float4 blend_color;		//２つのテクスチャのピクセルカラーを合成
+
+	//最初のテクスチャからピクセルカラーを取得
+	texture_color1 = shaderTexture[0].Sample(SampleType,input.tex);
+	//２番目のテクスチャからピクセルカラーを取得
+	texture_color2 = shaderTexture[1].Sample(SampleType,input.tex);
+	//２つのピクセルを混ぜ合わせて、ガンマ値を掛ける
+	blend_color = texture_color1 * texture_color2 * input.gamma_factor;
+
+	//最終色を飽和
+	blend_color = saturate(blend_color);
+
+	return blend_color;
+}

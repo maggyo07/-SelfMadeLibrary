@@ -1,0 +1,115 @@
+//グローバル
+//0 = カラー ：1 = 法線マップ：2 = スペキュラマップ
+Texture2D shaderTexture[3];
+SamplerState SampleType;
+
+//ライト情報
+cbuffer LightBuffer
+{
+	float4 diffuse_color;	//ライトの色
+	float3 light_direction;	//ライトの方向
+	float specular_power;	//スペキュラパワー
+	float3 specular_color;	//スペキュラカラー
+};
+//マッピングをするかどうかフラグ
+cbuffer MapFlagBuffer
+{
+	/*
+	0x01(下位1バイト)	:バンプマッピングフラグ
+ 	0x02(下位1バイト)	:スペキュラマッピングフラグ
+	0x04(下位1バイト)	:
+	0x08(下位1バイト)	:
+	*/
+	uint map_flag;
+};
+
+//タイプ
+struct PixelInputType
+{
+	float4 position	: SV_POSITION;			//位置
+	float2 tex		: TEXCOORD0;			//UV
+	float3 normal	: NORMAL;				//法線
+	float3 tangent	: TANGENT;				//接空間の情報
+	float3 binormal	: BINORMAL;				//normalとtangentの外積(Y軸)
+	float3 view_direction	: TEXCOORD1;	//カメラの方向情報
+};
+
+float4 MapPixelShader(PixelInputType input) : SV_TARGET
+{
+	float4 texture_color;	//カラーテクスチャのピクセルカラー
+	float4 bump_map;		//法線マップ
+	float4 bump_color;		//バンプマップの色情報
+	float3 light_dir;		//光の方向の逆
+	float  light_lntensity;	//光量
+	float4 color = float4(1.0f,1.0f,1.0f,1.0f);//最終的な色情報
+	float4 specular_lntensity;//
+	float3 reflection;		//反射ベクトル
+	float4 specular;		//スペキュラの光量
+	float3 normal = float3(input.normal);		//法線情報
+
+	//光の方向を逆にして計算
+	light_dir = -light_direction;
+	//光量を初期化
+	light_lntensity = saturate(dot(normal,light_dir));
+
+	//テクスチャピクセルをサンプリング
+	texture_color = shaderTexture[0].Sample(SampleType,input.tex);
+
+	//バンプマッピングを行う
+	if((map_flag & 0x01))
+	{
+		//バンプマップのピクセルをサンプリング
+		bump_map = shaderTexture[1].Sample(SampleType,input.tex);
+
+		//通常の値の範囲を(0,+1)から(-1,+1)に拡張する
+		bump_map = (bump_map * 2.0f) - 1.0f;
+	
+		//バンプマップのデータから法線を計算
+		normal = (bump_map.x * input.tangent) + (bump_map.y * input.binormal) + (bump_map.z * input.normal);
+
+		//結果として生じる法線を正規化
+		normal = normalize(normal);
+
+
+		//バンプマップの法線値に基づいてこのピクセルの光量を計算
+		light_lntensity = saturate(dot(normal,light_dir));
+		if(light_lntensity == 0.0f)
+			color.a = 0.0f;
+		//拡散色と光量の量に基づいて最終的な拡散色を決定
+		bump_color = saturate(diffuse_color * light_lntensity);
+		//上記の計算によって狂ったA値を調整
+		//bump_color.a = 1.0f;
+		//色を組み合わせる
+		color *= bump_color;
+	}
+	
+	//テクスチャカラーを組み合わせる
+	color = color * texture_color;
+
+	//スペキュラマッピングを行う
+	if((map_flag & 0x02))
+	{
+		//光強度が0より大きい場合は、スペキュラの計算を行う
+		if(light_lntensity > 0.0f)
+		{
+			//スペキュラマップテクスチャからピクセルをサンプリングする
+			specular_lntensity = shaderTexture[2].Sample(SampleType,input.tex);
+
+			//光の強度、法線ベクトル、光の方向に基づいて反射ベクトルを計算
+			reflection = normalize(2 * light_lntensity * normal - light_dir);
+
+			//反射ベクトル、表示方向、スペキュラパワーに基づいてスペキュラの光量を計算
+			specular = pow(saturate(dot(reflection,input.view_direction)),specular_power);
+
+			//このピクセルでのスペキュラライトの強度最終計算
+			specular = specular * specular_lntensity;
+
+			//出力色に追加する
+			color += specular;
+			color = saturate(color);
+		}	
+	}
+	//A値がおかしくなっていたのでカラーテクスチャのA値にする
+	color.a = texture_color.a;
+	return color;
+}

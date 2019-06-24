@@ -1,0 +1,37 @@
+//グローバル
+Texture2D shaderTexture;
+SamplerState SampleType;
+
+//フォントテキストを描画するために使用されるピクセルの色を制御する
+cbuffer PixelBuffer
+{
+	float4 pixelColor;
+}
+
+//タイプ
+struct PixelInputType
+{
+	float4 position	: SV_POSITION;
+	float2 tex		: TEXCOORD0;
+};
+
+float4 FontPixelShader(PixelInputType input) : SV_TARGET
+{
+	float4 color;
+
+	//このテクスチャ座用位置でサンプラを使用して、テクスチャからピクセルカラーをサンプリング
+	color = shaderTexture.Sample(SampleType,input.tex);
+
+	//色がテクスチャ上で黒色の場合、このピクセルを透明として扱う
+	if(color.r == 0.0f)
+	{
+		color.a = 0.0f;	
+	}
+	//色がテクスチャ上で黒以外の場合、これはフォント内のピクセルなので、フォントのピクセルカラーを使用して描画
+	else
+	{
+		color.a = 1.0f;
+		color = color * pixelColor;
+	}
+	return color;
+}
